@@ -32,8 +32,17 @@ async fn main() {
                         .await
                         .unwrap_or("Failed to transcribe the message".to_string()),
                 )
+                .reply_to_message_id(message.id)
                 .await?;
             }
+        } else if Some("ping") == message.text() {
+            bot.send_message(
+                message.chat.id,
+                format!("Pong"),
+            )
+            .reply_to_message_id(message.id)
+            .await
+            .unwrap();
         }
 
         respond(())
