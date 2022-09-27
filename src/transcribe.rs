@@ -2,8 +2,12 @@ use std::process::Command as OsCommand;
 use teloxide::types::{self, File as TelegramFile};
 use teloxide::{net::Download, prelude::*};
 
-use tokio::fs::{read_to_string, File};
+use tokio::fs::{self, File};
 
+// TODO: Reconsider file creations
+/// Downloads and transcribes a message.
+///
+/// Returns transcription as a String
 pub async fn download_and_transcribe(
     bot: &AutoSend<Bot>,
     voice: &types::Voice,
@@ -11,8 +15,9 @@ pub async fn download_and_transcribe(
     let TelegramFile { meta, file_path } = bot.get_file(&voice.file_id).send().await.unwrap();
     let local_filename = meta.file_unique_id.as_str();
 
-    if let Ok(_) = File::open(format!("{local_filename}.vtt")).await {
-        return Ok(read_to_string(format!("{local_filename}.vtt"))
+    // Read transcription if already transcribed
+    if let Ok(_) = File::open(format!("{local_filename}.txt")).await {
+        return Ok(fs::read_to_string(format!("{local_filename}.txt"))
             .await
             .unwrap());
     }
@@ -25,7 +30,15 @@ pub async fn download_and_transcribe(
         .unwrap();
     println!("Finished downloading voice file...");
 
-    transcribe(local_filename).await
+    let transcribed = transcribe(local_filename).await;
+
+    // TODO Handle errors, panics on:
+    //  path points to a directory
+    //  file doesn’t exist
+    //  user lacks permisions to remove the file
+    fs::remove_file(local_filename).await.unwrap();
+
+    transcribed
 }
 
 async fn transcribe(path: &str) -> Result<String, String> {
