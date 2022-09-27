@@ -56,10 +56,10 @@ async fn transcribe(path: &str) -> Result<String, String> {
 
     match output {
         Ok(result) => {
-            let transcribed = std::str::from_utf8(&result.stdout).unwrap().to_string();
-            eprintln!("{}", std::str::from_utf8(&result.stderr).unwrap());
+            let transcribed = String::from_utf8_lossy(&result.stdout);
+            eprintln!("{}", String::from_utf8_lossy(&result.stderr));
 
-            Ok(transcribed)
+            Ok(transcribed.to_string())
         }
         Err(e) => {
             eprintln!("Failed transcribing {}: {}", path, e);
