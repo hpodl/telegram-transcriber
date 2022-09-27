@@ -1,25 +1,42 @@
 use std::process::Command as OsCommand;
-use teloxide::types::{self, File as TelegramFile};
+use teloxide::types::File as TelegramFile;
 use teloxide::{net::Download, prelude::*};
 
 use tokio::fs::{self, File};
+
+/// Returns `Some(transcription)` of audio if `message` contains any
+/// even if the transcription happens to be an empty string
+///
+/// Returns `None` if it doesn't
+pub async fn transcribe_or_none(bot: &AutoSend<Bot>, message: &Message) -> Option<String> {
+    let file_id = {
+        if let Some(media) = message.voice() {
+            &media.file_id
+        } else if let Some(media) = message.audio() {
+            &media.file_id
+        } else if let Some(media) = message.video() {
+            &media.file_id
+        } else if let Some(media) = message.video_note() {
+            &media.file_id
+        } else {
+            return None;
+        }
+    };
+
+    download_and_transcribe(bot, file_id).await.ok()
+}
 
 // TODO: Reconsider file creations
 /// Downloads and transcribes a message.
 ///
 /// Returns transcription as a String
-pub async fn download_and_transcribe(
-    bot: &AutoSend<Bot>,
-    voice: &types::Voice,
-) -> Result<String, String> {
-    let TelegramFile { meta, file_path } = bot.get_file(&voice.file_id).send().await.unwrap();
+async fn download_and_transcribe(bot: &AutoSend<Bot>, file_id: &str) -> Result<String, String> {
+    let TelegramFile { meta, file_path } = bot.get_file(file_id).send().await.unwrap();
     let local_filename = meta.file_unique_id.as_str();
 
     // Read transcription if already transcribed
-    if let Ok(_) = File::open(format!("{local_filename}.txt")).await {
-        return Ok(fs::read_to_string(format!("{local_filename}.txt"))
-            .await
-            .unwrap());
+    if let Ok(read) = fs::read_to_string(format!("{local_filename}.txt")).await {
+        return Ok(read);
     }
 
     let mut local_file = File::create(local_filename).await.unwrap();

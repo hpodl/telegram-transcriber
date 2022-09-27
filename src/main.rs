@@ -1,10 +1,10 @@
-use teloxide::types::{self, MediaKind, MessageKind};
-use teloxide::{prelude::*, utils::command::BotCommands};
-
 use std::error::Error;
+use teloxide::{prelude::*, utils::command::BotCommands};
+use transcribe::*;
+
+//TODO consider logging instead of stderr prints
 
 mod transcribe;
-use transcribe::*;
 
 #[tokio::main]
 async fn main() {
@@ -41,19 +41,22 @@ async fn answer(
     Ok(())
 }
 
+/// Handles transcription requests
+///
+/// Request message must be a reply to audio to be transcribed
 async fn transcribe_handler(
     bot: &AutoSend<Bot>,
     message: &Message,
 ) -> Result<Message, teloxide::RequestError> {
     Ok(match message.reply_to_message() {
         Some(replied) => {
-            if let Some(voice) = get_voice_from_message(replied) {
-                let transcribed = download_and_transcribe(bot, voice).await.unwrap();
+            if let Some(transcribed) = transcribe_or_none(bot, replied).await {
                 bot.send_message(message.chat.id, transcribed)
                     .reply_to_message_id(replied.id)
                     .await?
             } else {
-                bot.send_message(message.chat.id, "Not a voice message").await?
+                bot.send_message(message.chat.id, "Not a voice message")
+                    .await?
             }
         }
         None => {
@@ -62,14 +65,4 @@ async fn transcribe_handler(
                 .await?
         }
     })
-}
-
-#[inline]
-fn get_voice_from_message(message: &Message) -> Option<&types::Voice> {
-    if let MessageKind::Common(kind) = &message.kind {
-        if let MediaKind::Voice(voice_kind) = &kind.media_kind {
-            return Some(&voice_kind.voice);
-        }
-    }
-    None
 }
