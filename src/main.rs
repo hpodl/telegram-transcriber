@@ -21,7 +21,13 @@ enum Command {
     #[command(description = "ping.")]
     Ping,
     #[command(description = "transcribe voice message being replied to.")]
-    Transcribe,
+    // string parameter specifies which model to use
+    Transcribe(String),
+    #[command(
+        description = "placeholder for testing functionality.",
+        parse_with = "split"
+    )]
+    Test(String),
 }
 
 async fn answer(
@@ -35,7 +41,8 @@ async fn answer(
                 .await?
         }
         Command::Ping => bot.send_message(message.chat.id, "Pong.").await?,
-        Command::Transcribe => transcribe_handler(&bot, &message).await?,
+        Command::Transcribe(model) => transcribe_handler(&bot, &message, &model).await?,
+        Command::Test(param) => test_handler(&bot, &message, &param).await?,
     };
 
     Ok(())
@@ -47,22 +54,41 @@ async fn answer(
 async fn transcribe_handler(
     bot: &AutoSend<Bot>,
     message: &Message,
+    model: &str,
 ) -> Result<Message, teloxide::RequestError> {
+    let model = if !is_valid_model(model) {
+        if !model.is_empty() {
+            bot.send_message(message.chat.id, "Invalid model specified, using 'small'")
+                .reply_to_message_id(message.id)
+                .await?;
+        }
+        "small"
+    } else {
+        model
+    };
+
     Ok(match message.reply_to_message() {
-        Some(replied) => {
-            if let Some(transcribed) = transcribe_or_none(bot, replied).await {
+        Some(replied) => match try_transcribe(bot, replied, model).await {
+            Ok(transcribed) => {
                 bot.send_message(message.chat.id, transcribed)
                     .reply_to_message_id(replied.id)
                     .await?
-            } else {
-                bot.send_message(message.chat.id, "Not a voice message")
-                    .await?
             }
-        }
+            Err(e) => bot.send_message(message.chat.id, e).await?,
+        },
         None => {
             bot.send_message(message.chat.id, "No message is being replied to.")
                 .reply_to_message_id(message.id)
                 .await?
         }
     })
+}
+
+async fn test_handler(
+    bot: &AutoSend<Bot>,
+    message: &Message,
+    param: &str,
+) -> Result<Message, teloxide::RequestError> {
+    bot.send_message(message.chat.id, format!("Given: {}", param))
+        .await
 }
