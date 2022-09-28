@@ -31,7 +31,11 @@ pub async fn transcribe_or_none(bot: &AutoSend<Bot>, message: &Message) -> Optio
 ///
 /// Returns transcription as a String
 async fn download_and_transcribe(bot: &AutoSend<Bot>, file_id: &str) -> Result<String, String> {
-    let TelegramFile { meta, file_path } = bot.get_file(file_id).send().await.unwrap();
+    let TelegramFile { meta, file_path } = bot
+        .get_file(file_id)
+        .send()
+        .await
+        .map_err(|err| format!("Failed to download the file: {err}"))?;
     let local_filename = meta.file_unique_id.as_str();
 
     // Read transcription if already transcribed
@@ -39,21 +43,24 @@ async fn download_and_transcribe(bot: &AutoSend<Bot>, file_id: &str) -> Result<S
         return Ok(read);
     }
 
-    let mut local_file = File::create(local_filename).await.unwrap();
+    let mut local_file = File::create(local_filename)
+        .await
+        .map_err(|err| format!("Couldn't create the local file: {err}"))?;
 
-    println!("Downloading voice file...");
+    println!("Downloading {}B", meta.file_size);
     bot.download_file(&file_path, &mut local_file)
         .await
-        .unwrap();
-    println!("Finished downloading voice file...");
+        .map_err(|err| format!("Downloading the file failed: {err}"))?;
+
+    println!("Finished downloading");
 
     let transcribed = transcribe(local_filename).await;
 
-    // TODO Handle errors, panics on:
-    //  path points to a directory
-    //  file doesn’t exist
-    //  user lacks permisions to remove the file
-    fs::remove_file(local_filename).await.unwrap();
+    // errors if file was removed or permissions changed
+    fs::remove_file(local_filename)
+        .await
+        .map_err(|err| format!("Failed to remove the local file: {err}"))?;
+    println!("Transcription finished, file removed");
 
     transcribed
 }
@@ -72,15 +79,7 @@ async fn transcribe(path: &str) -> Result<String, String> {
         .output();
 
     match output {
-        Ok(result) => {
-            let transcribed = String::from_utf8_lossy(&result.stdout);
-            eprintln!("{}", String::from_utf8_lossy(&result.stderr));
-
-            Ok(transcribed.to_string())
-        }
-        Err(e) => {
-            eprintln!("Failed transcribing {}: {}", path, e);
-            Err("Couldn't transcribe the message.".to_string())
-        }
+        Ok(result) => Ok(String::from_utf8_lossy(&result.stdout).to_string()),
+        Err(e) => Err(format!("Failed to execute the transcriber: {e}")),
     }
 }
