@@ -54,7 +54,7 @@ async fn download_and_transcribe(bot: &AutoSend<Bot>, file_id: &str) -> Result<S
 
     println!("Finished downloading");
 
-    let transcribed = transcribe(local_filename).await;
+    let transcribed = transcribe_file(local_filename).await;
 
     // errors if file was removed or permissions changed
     fs::remove_file(local_filename)
@@ -65,7 +65,7 @@ async fn download_and_transcribe(bot: &AutoSend<Bot>, file_id: &str) -> Result<S
     transcribed
 }
 
-async fn transcribe(path: &str) -> Result<String, String> {
+async fn transcribe_file(path: &str) -> Result<String, String> {
     if cfg!(target_os = "windows") {
         panic!()
     }
