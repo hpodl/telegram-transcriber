@@ -1,9 +1,11 @@
 use std::collections::HashSet;
-use std::process::Command as OsCommand;
-use teloxide::types::File as TelegramFile;
-use teloxide::{net::Download, prelude::*};
+use std::env;
 
-use tokio::fs::{self, File};
+use teloxide::prelude::*;
+use teloxide::types::File as TelegramFile;
+
+use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 
 use lazy_static::lazy_static;
 
@@ -17,6 +19,7 @@ lazy_static! {
         set.insert("large");
         set
     };
+    static ref TOKEN: String = env::var("TELOXIDE_TOKEN").unwrap();
 }
 
 // TODO Refector out the need to pass model parameter through multiple function calls
@@ -45,49 +48,26 @@ pub async fn try_transcribe(
         }
     };
 
-    download_and_transcribe(bot, file_id, model).await
+    transcribe(bot, file_id, model).await
 }
 
 /// Downloads and transcribes a message.
 ///
 /// Returns transcription as a String
-async fn download_and_transcribe(
-    bot: &AutoSend<Bot>,
-    file_id: &str,
-    model: &str,
-) -> Result<String, String> {
-    let TelegramFile { meta, file_path } = bot
+async fn transcribe(bot: &AutoSend<Bot>, file_id: &str, model: &str) -> Result<String, String> {
+    let TelegramFile { file_path, .. } = bot
         .get_file(file_id)
         .send()
         .await
         .map_err(|err| format!("Failed to download the file: {err}"))?;
 
-    let local_filename = &meta.file_unique_id;
-    // Read transcription if already transcribed
-    if let Ok(read) = fs::read_to_string(format!("{local_filename}.vtt")).await {
-        return Ok(read);
-    }
+    let dl_link = &format!(
+        "https://api.telegram.org/file/bot{}/{}",
+        TOKEN.as_str(),
+        file_path
+    );
 
-    let mut local_file = File::create(local_filename)
-        .await
-        .map_err(|err| format!("Couldn't create the local file: {err}"))?;
-
-    println!("Downloading {}B", meta.file_size);
-    bot.download_file(&file_path, &mut local_file)
-        .await
-        .map_err(|err| format!("Downloading the file failed: {err}"))?;
-
-    println!("Finished downloading");
-
-    let transcribed = transcribe_file(local_filename, model).await;
-
-    // errors if file was removed or permissions changed
-    fs::remove_file(local_filename)
-        .await
-        .map_err(|err| format!("Failed to remove the local file: {err}"))?;
-    println!("Transcription finished, file removed");
-
-    transcribed
+    transcribe_file(dl_link, model).await
 }
 
 async fn transcribe_file(path: &str, model: &str) -> Result<String, String> {
@@ -95,18 +75,28 @@ async fn transcribe_file(path: &str, model: &str) -> Result<String, String> {
         panic!()
     }
 
-    println!("Starting transcription of {}.", path);
-    let output = OsCommand::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "whisper --model {model} --language pl --task transcribe {path}"
-        ))
-        .output();
+    python_transcribe(path, model)
+        .await
+        .map_err(|e| format!("{}", e))
+}
 
-    match output {
-        Ok(result) => Ok(String::from_utf8_lossy(&result.stdout).to_string()),
-        Err(e) => Err(format!("Failed to execute the transcriber: {e}")),
-    }
+async fn python_transcribe(path: &str, model: &str) -> Result<String, PyErr> {
+    Python::with_gil(|py| -> PyResult<String> {
+        let transcribe: Py<PyAny> = PyModule::from_code(
+            py,
+            "def transcribe(model, path):
+                import whisper
+                model = whisper.load_model(model)
+                return model.transcribe(path)[\"text\"]",
+            "",
+            "",
+        )?
+        .getattr("transcribe")?
+        .into();
+
+        let args = PyTuple::new(py, &[model, path]);
+        Ok(transcribe.call1(py, args)?.to_string())
+    })
 }
 
 pub fn is_valid_model(model: &str) -> bool {
