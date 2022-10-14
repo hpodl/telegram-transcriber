@@ -2,9 +2,11 @@ use std::error::Error;
 use teloxide::{prelude::*, utils::command::BotCommands};
 use transcribe::*;
 
-//TODO consider logging instead of stderr prints
-
+mod logger;
 mod transcribe;
+
+use crate::logger::Logger as _;
+type Logger = logger::StdErrLogger;
 
 #[tokio::main]
 async fn main() {
@@ -56,6 +58,8 @@ async fn transcribe_handler(
     message: &Message,
     model: &str,
 ) -> Result<Message, teloxide::RequestError> {
+    Logger::log("Got a transcribe request");
+
     let model = if !is_valid_model(model) {
         if !model.is_empty() {
             bot.send_message(message.chat.id, "Invalid model specified, using 'small'")
@@ -66,6 +70,8 @@ async fn transcribe_handler(
     } else {
         model
     };
+
+    Logger::log(&format!("Using {} model.", model));
 
     Ok(match message.reply_to_message() {
         Some(replied) => match try_transcribe(bot, replied, model).await {

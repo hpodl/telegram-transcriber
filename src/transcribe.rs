@@ -9,6 +9,10 @@ use pyo3::types::PyTuple;
 
 use lazy_static::lazy_static;
 
+use crate::logger::Logger as _;
+// type alias for an object implementing crate::logger:Logger trait
+use crate::Logger;
+
 lazy_static! {
     static ref AVAILABLE_MODELS: HashSet<&'static str> = {
         let mut set = HashSet::new();
@@ -67,7 +71,11 @@ async fn transcribe(bot: &AutoSend<Bot>, file_id: &str, model: &str) -> Result<S
         file_path
     );
 
-    transcribe_file(dl_link, model).await
+    Logger::log(&format!("Transcribing audio from {}.", dl_link));
+    transcribe_file(dl_link, model).await.map(|val| {
+        Logger::log(&format!("Finished transcribing {}.", dl_link));
+        val
+    })
 }
 
 async fn transcribe_file(path: &str, model: &str) -> Result<String, String> {
