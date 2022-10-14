@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cpython = "0.7.0"
 lazy_static = "1.4.0"
 teloxide = { version = "0.10.1", features = ["macros"]}
 tokio = { version = "1.21.1", features = ["full"] }
