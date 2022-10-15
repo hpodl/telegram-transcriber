@@ -79,10 +79,6 @@ async fn transcribe(bot: &AutoSend<Bot>, file_id: &str, model: &str) -> Result<S
 }
 
 async fn transcribe_file(path: &str, model: &str) -> Result<String, String> {
-    if cfg!(target_os = "windows") {
-        panic!()
-    }
-
     python_transcribe(path, model)
         .await
         .map_err(|e| format!("{}", e))
